@@ -1,0 +1,149 @@
+@import "antd/dist/reset.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+  --background-rgb: 247, 248, 250;
+  --primary-color: #2563eb;
+  --secondary-color: #1e40af;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: #f5f5f5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+}
+
+.ant-layout {
+  background: #f5f5f5;
+}
+
+.container-center {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+  margin: 0 auto;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.dictation-card {
+  width: 100%;
+  max-width: 900px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
+  background-color: white;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
+.input-textarea {
+  min-height: 80px !important;
+  width: 100% !important;
+  font-size: 1.125rem !important;
+  line-height: 1.75rem !important;
+  padding: 1rem !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 0.375rem !important;
+  resize: none !important;
+  transition: border-color 0.2s ease-in-out !important;
+}
+
+.input-textarea:focus {
+  outline: none !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+}
+
+.word-incorrect {
+  background-color: #fee2e2 !important;
+  color: #b91c1c !important;
+  font-weight: bold !important;
+  padding: 0.25rem 0.5rem !important;
+  margin: 0.25rem !important;
+  border-radius: 0.25rem !important;
+  display: inline-block !important;
+}
+
+.word-correct {
+  background-color: #dcfce7 !important;
+  color: #166534 !important;
+  padding: 0.25rem 0.5rem !important;
+  margin: 0.25rem !important;
+  border-radius: 0.25rem !important;
+  display: inline-block !important;
+}
+
+.missing-word {
+  background-color: #ffedd5 !important;
+  color: #9a3412 !important;
+  padding: 0.25rem 0.5rem !important;
+  margin: 0.25rem !important;
+  border-radius: 0.25rem !important;
+  display: inline-block !important;
+}
+
+.btn-primary {
+  background-color: var(--primary-color) !important;
+  color: white !important;
+  padding: 0.75rem 1.5rem !important;
+  border-radius: 0.375rem !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease-in-out !important;
+  border: none !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.btn-primary:hover {
+  background-color: var(--secondary-color) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.btn-success {
+  background-color: #10b981 !important;
+  color: white !important;
+  padding: 0.75rem 1.5rem !important;
+  border-radius: 0.375rem !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease-in-out !important;
+  border: none !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.btn-success:hover {
+  background-color: #059669 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.header-gradient {
+  background: linear-gradient(to right, #2563eb, #1e40af);
+  color: white;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 自定义样式 */
+.dictation-container .ant-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09);
+}
+
+.dictation-header {
+  background: linear-gradient(to right, #1890ff, #1677ff);
+  color: white;
+  padding: 16px 24px;
+  border-radius: 8px 8px 0 0;
+}
