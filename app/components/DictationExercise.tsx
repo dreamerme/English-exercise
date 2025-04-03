@@ -1,14 +1,12 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Bo } from "../data/dictation-data";
-import Link from "next/link";
 import {
   recordQuestionError,
   recordWordError,
   saveProgress,
   getProgress,
   clearProgress,
-  DictationProgress,
   getShortcutsSettings,
 } from "../utils/statisticsDB";
 import {
@@ -26,7 +24,6 @@ import {
   message,
   Result,
   Statistic,
-  Alert,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -37,7 +34,6 @@ import {
   CheckOutlined,
   FileTextOutlined,
   SoundOutlined,
-  EnterOutlined,
   InfoCircleOutlined,
   BarChartOutlined,
 } from "@ant-design/icons";
@@ -92,7 +88,7 @@ const loadShortcutsFromIndexedDB = async (): Promise<ShortcutsSettings> => {
     }
 
     // 去除ID和时间戳，只保留配置部分
-    const { id, lastUpdateTime, ...shortcutsConfig } = settings;
+    const { ...shortcutsConfig } = settings;
     return shortcutsConfig as ShortcutsSettings;
   } catch (error) {
     console.error("从IndexedDB加载快捷键设置失败:", error);
@@ -145,72 +141,76 @@ export default function DictationExercise() {
   };
 
   // 分析文本匹配度
-  const analyzeText = (original: string, input: string): DictationResult => {
-    // 处理输入，确保它有正确的结尾句号
-    let processedInput = input.trim();
-    if (!processedInput.endsWith(".")) {
-      processedInput += ".";
-    }
-
-    // 分割单词进行比较
-    const originalWords = original.trim().split(/\s+/);
-    const inputWords = processedInput.split(/\s+/);
-
-    const correctWords: string[] = [];
-    const incorrectWords: string[] = [];
-
-    // 比较输入的每个单词
-    inputWords.forEach((word, index) => {
-      const isLast = index === inputWords.length - 1;
-      const currentWord = isLast ? removePeriod(word) : word;
-      const originalWord =
-        index < originalWords.length
-          ? isLast
-            ? removePeriod(originalWords[index])
-            : originalWords[index]
-          : "";
-
-      if (index < originalWords.length && currentWord === originalWord) {
-        correctWords.push(word); // 保留原始单词形式（可能包含句号）
-      } else {
-        incorrectWords.push(word);
+  const analyzeText = useCallback(
+    (original: string, input: string): DictationResult => {
+      // 处理输入，确保它有正确的结尾句号
+      let processedInput = input.trim();
+      if (!processedInput.endsWith(".")) {
+        processedInput += ".";
       }
-    });
 
-    // 找出缺失的单词
-    const missingWords = originalWords.filter((word, index) => {
-      const isLast = index === originalWords.length - 1;
-      const originalWord = isLast ? removePeriod(word) : word;
+      // 分割单词进行比较
+      const originalWords = original.trim().split(/\s+/);
+      const inputWords = processedInput.split(/\s+/);
 
-      return (
-        index >= inputWords.length ||
-        (index < inputWords.length &&
-          (isLast ? removePeriod(inputWords[index]) : inputWords[index]) !==
-            originalWord)
-      );
-    });
+      const correctWords: string[] = [];
+      const incorrectWords: string[] = [];
 
-    // 判断答案是否正确的逻辑
-    // 1. 完全匹配原文 或
-    // 2. 没有错误单词且没有缺失单词 (这是关键修改)
-    const exactMatch =
-      processedInput === original.trim() ||
-      (removePeriod(processedInput) === removePeriod(original.trim()) &&
-        processedInput.endsWith(".") &&
-        original.trim().endsWith("."));
+      // 比较输入的每个单词
+      inputWords.forEach((word, index) => {
+        const isLast = index === inputWords.length - 1;
+        const currentWord = isLast ? removePeriod(word) : word;
+        const originalWord =
+          index < originalWords.length
+            ? isLast
+              ? removePeriod(originalWords[index])
+              : originalWords[index]
+            : "";
 
-    const isCorrect =
-      exactMatch || (incorrectWords.length === 0 && missingWords.length === 0);
+        if (index < originalWords.length && currentWord === originalWord) {
+          correctWords.push(word); // 保留原始单词形式（可能包含句号）
+        } else {
+          incorrectWords.push(word);
+        }
+      });
 
-    return {
-      isCorrect,
-      originalText: original,
-      userInput: processedInput,
-      correctWords,
-      incorrectWords,
-      missingWords,
-    };
-  };
+      // 找出缺失的单词
+      const missingWords = originalWords.filter((word, index) => {
+        const isLast = index === originalWords.length - 1;
+        const originalWord = isLast ? removePeriod(word) : word;
+
+        return (
+          index >= inputWords.length ||
+          (index < inputWords.length &&
+            (isLast ? removePeriod(inputWords[index]) : inputWords[index]) !==
+              originalWord)
+        );
+      });
+
+      // 判断答案是否正确的逻辑
+      // 1. 完全匹配原文 或
+      // 2. 没有错误单词且没有缺失单词 (这是关键修改)
+      const exactMatch =
+        processedInput === original.trim() ||
+        (removePeriod(processedInput) === removePeriod(original.trim()) &&
+          processedInput.endsWith(".") &&
+          original.trim().endsWith("."));
+
+      const isCorrect =
+        exactMatch ||
+        (incorrectWords.length === 0 && missingWords.length === 0);
+
+      return {
+        isCorrect,
+        originalText: original,
+        userInput: processedInput,
+        correctWords,
+        incorrectWords,
+        missingWords,
+      };
+    },
+    []
+  );
 
   // 监听currentIndex变化，自动播放音频
   useEffect(() => {
@@ -388,7 +388,7 @@ export default function DictationExercise() {
 
   // 修改handleSubmit使用messageApi
   const handleSubmit = useCallback(
-    (eventOrValues?: React.FormEvent | any) => {
+    (eventOrValues?: React.FormEvent | Record<string, unknown>) => {
       // 如果是事件对象，阻止默认行为
       if (eventOrValues && typeof eventOrValues.preventDefault === "function") {
         eventOrValues.preventDefault();
@@ -482,7 +482,7 @@ export default function DictationExercise() {
         }, 1000);
       }
     },
-    [currentItem.id, currentItem.text, userInput, form, handleNext]
+    [currentItem.id, currentItem.text, userInput, form, handleNext, analyzeText]
   );
 
   // 重置当前题目
@@ -552,11 +552,14 @@ export default function DictationExercise() {
     []
   );
 
-  const handleFormValuesChange = useCallback((changedValues: any) => {
-    if (changedValues.userInput !== undefined) {
-      setUserInput(changedValues.userInput);
-    }
-  }, []);
+  const handleFormValuesChange = useCallback(
+    (changedValues: Record<string, unknown>) => {
+      if (changedValues.userInput !== undefined) {
+        setUserInput(changedValues.userInput as string);
+      }
+    },
+    []
+  );
 
   // 根据当前快捷键设置动态生成提示文本
   const getShortcutTip = useCallback(
@@ -564,8 +567,8 @@ export default function DictationExercise() {
       if (!shortcuts || !shortcuts[action]) return "";
       return formatShortcut(shortcuts[action]);
     },
-    [shortcuts, uiRefreshTrigger]
-  ); // 添加uiRefreshTrigger作为依赖项以确保UI更新
+    [shortcuts]
+  );
 
   // 组件挂载时加载快捷键设置
   useEffect(() => {
@@ -694,7 +697,7 @@ export default function DictationExercise() {
   }, [handleSubmit, handleNext, handlePrevious, handleReset, shortcuts]); // 添加shortcuts作为依赖项
 
   // 修改handleKeyDown函数，因为全局处理器已经处理了大部分快捷键
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback(() => {
     // 本地键盘处理只保留必要的，大部分由全局处理器处理
   }, []);
 

@@ -39,9 +39,18 @@ const { Title, Text } = Typography;
 // 不再从Modal导入confirm
 // const { confirm } = Modal;
 
+// 定义错误记录的接口
+interface ErrorRecord {
+  id?: number;
+  text?: string;
+  word?: string;
+  count: number;
+  lastErrorTime: string;
+}
+
 export default function StatisticsPage() {
-  const [questionErrors, setQuestionErrors] = useState<any[]>([]);
-  const [wordErrors, setWordErrors] = useState<any[]>([]);
+  const [questionErrors, setQuestionErrors] = useState<ErrorRecord[]>([]);
+  const [wordErrors, setWordErrors] = useState<ErrorRecord[]>([]);
   const [activeTab, setActiveTab] = useState<string>("questions");
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -195,7 +204,7 @@ export default function StatisticsPage() {
       key: "count",
       render: (count: number) => <Tag color="error">{count} 次</Tag>,
       width: 100,
-      sorter: (a: any, b: any) => a.count - b.count,
+      sorter: (a: ErrorRecord, b: ErrorRecord) => a.count - b.count,
     },
     {
       title: "最近错误时间",
@@ -209,7 +218,7 @@ export default function StatisticsPage() {
           </Space>
         ) : null,
       width: 180,
-      sorter: (a: any, b: any) =>
+      sorter: (a: ErrorRecord, b: ErrorRecord) =>
         new Date(a.lastErrorTime || 0).getTime() -
         new Date(b.lastErrorTime || 0).getTime(),
     },
@@ -230,7 +239,7 @@ export default function StatisticsPage() {
       key: "count",
       render: (count: number) => <Tag color="error">{count} 次</Tag>,
       width: 100,
-      sorter: (a: any, b: any) => a.count - b.count,
+      sorter: (a: ErrorRecord, b: ErrorRecord) => a.count - b.count,
     },
     {
       title: "最近错误时间",
@@ -243,14 +252,22 @@ export default function StatisticsPage() {
             {formatDateTime(time)}
           </Space>
         ) : null,
-      sorter: (a: any, b: any) =>
+      sorter: (a: ErrorRecord, b: ErrorRecord) =>
         new Date(a.lastErrorTime || 0).getTime() -
         new Date(b.lastErrorTime || 0).getTime(),
     },
   ];
 
   // 渲染表格时使用React.memo来优化性能
-  const StatisticsTable = ({ dataSource, columns, rowKey }: any) => {
+  const StatisticsTable = ({
+    dataSource,
+    columns,
+    rowKey,
+  }: {
+    dataSource: ErrorRecord[];
+    columns: any[];
+    rowKey: string;
+  }) => {
     return (
       <Table
         dataSource={dataSource}
@@ -262,7 +279,6 @@ export default function StatisticsPage() {
           defaultPageSize: 10,
         }}
         scroll={{ x: "max-content" }}
-        // 添加关键的性能优化属性
         virtual={false}
         sticky={true}
       />
@@ -287,8 +303,25 @@ export default function StatisticsPage() {
   );
 
   // 定义 Tabs 的 items 配置
-  const tabItems = useMemo(
-    () => [
+  const tabItems = useMemo(() => {
+    // 缓存表格组件实例，将它们移到 useMemo 内部
+    const QuestionTable = () => (
+      <StatisticsTable
+        dataSource={questionErrors}
+        columns={questionColumns}
+        rowKey="id"
+      />
+    );
+
+    const WordTable = () => (
+      <StatisticsTable
+        dataSource={wordErrors}
+        columns={wordColumns}
+        rowKey="word"
+      />
+    );
+
+    return [
       {
         key: "questions",
         label: (
@@ -453,15 +486,18 @@ export default function StatisticsPage() {
           </>
         ),
       },
-    ],
-    [isLoading, questionErrors, wordErrors]
-  );
+    ];
+  }, [isLoading, questionErrors, wordErrors, loadError, loadStatistics]);
+
+  // 使用useEffect记录渲染信息
+  useEffect(() => {
+    console.log(
+      `[RENDER] isLoading=${isLoading}, wordErrors=${wordErrors.length}, questionErrors=${questionErrors.length}, updateCounter=${updateCounter}`
+    );
+  }, [isLoading, wordErrors.length, questionErrors.length, updateCounter]);
 
   return (
     <div style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto" }}>
-      {console.log(
-        `[RENDER] isLoading=${isLoading}, wordErrors=${wordErrors.length}, questionErrors=${questionErrors.length}, updateCounter=${updateCounter}`
-      )}
       {loadError && (
         <Alert
           message="加载失败"
