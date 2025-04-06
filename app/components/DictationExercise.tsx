@@ -8,6 +8,10 @@ import {
   getProgress,
   clearProgress,
   getShortcutsSettings,
+  ErrorType,
+  ErrorTypeNames,
+  ErrorTypeColors,
+  compareTexts,
 } from "../utils/statisticsDB";
 import {
   Typography,
@@ -24,6 +28,7 @@ import {
   message,
   Result,
   Statistic,
+  Divider,
 } from "antd";
 import {
   CheckCircleOutlined,
@@ -36,6 +41,7 @@ import {
   SoundOutlined,
   InfoCircleOutlined,
   BarChartOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 
 const { Title, Text, Paragraph } = Typography;
@@ -48,6 +54,12 @@ interface DictationResult {
   correctWords: string[];
   incorrectWords: string[];
   missingWords: string[];
+  extraWords: string[];
+  errorDetails?: Array<{
+    originalWord: string;
+    userWord?: string;
+    errorType: ErrorType;
+  }>;
 }
 
 // 快捷键配置的接口
@@ -106,6 +118,35 @@ const formatShortcut = (shortcut: ShortcutConfig): string => {
   return result;
 };
 
+// 获取错误类型的详细描述
+const getErrorTypeDescription = (
+  errorType: ErrorType,
+  originalWord: string,
+  userWord: string
+): string => {
+  switch (errorType) {
+    case ErrorType.SPELLING:
+      return `"${originalWord}"的拼写错误。你写成了"${userWord}"，请注意拼写。`;
+    case ErrorType.MISSING_WORD:
+      return `缺少单词"${originalWord}"。此单词在原句中是必要的。`;
+    case ErrorType.EXTRA_WORD:
+      return `多余单词"${userWord}"。原句中不需要这个单词。`;
+    case ErrorType.WORD_ORDER:
+      return `单词"${originalWord}"位置错误。请注意单词在句子中的顺序。`;
+    case ErrorType.TENSE:
+      return `时态错误。"${originalWord}"的时态用法不正确，你写成了"${userWord}"。`;
+    case ErrorType.PART_OF_SPEECH:
+      return `词性错误。"${originalWord}"的词性用法不正确，你写成了"${userWord}"。`;
+    case ErrorType.SYNONYM:
+      return `同义词误用。原句使用"${originalWord}"，而不是"${userWord}"。`;
+    case ErrorType.APPROXIMATE:
+      return `近似但不等价表达。原句使用"${originalWord}"，而不是"${userWord}"。`;
+    case ErrorType.OTHER:
+    default:
+      return `"${originalWord}"与"${userWord}"不匹配，请检查原句。`;
+  }
+};
+
 export default function DictationExercise() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userInput, setUserInput] = useState("");
@@ -149,64 +190,92 @@ export default function DictationExercise() {
         processedInput += ".";
       }
 
-      // 分割单词进行比较
-      const originalWords = original.trim().split(/\s+/);
-      const inputWords = processedInput.split(/\s+/);
+      // 确保原始文本也有结尾句号
+      let processedOriginal = original.trim();
+      if (!processedOriginal.endsWith(".")) {
+        processedOriginal += ".";
+      }
 
-      const correctWords: string[] = [];
-      const incorrectWords: string[] = [];
+      // 使用改进的compareTexts函数进行文本比较
+      const comparisonResult = compareTexts(processedOriginal, processedInput);
 
-      // 比较输入的每个单词
-      inputWords.forEach((word, index) => {
-        const isLast = index === inputWords.length - 1;
-        const currentWord = isLast ? removePeriod(word) : word;
-        const originalWord =
-          index < originalWords.length
-            ? isLast
-              ? removePeriod(originalWords[index])
-              : originalWords[index]
-            : "";
+      // 提取正确、错误和缺失的单词
+      const correctWords = comparisonResult
+        .filter((item) => item.status === "correct")
+        .map((item) => item.word);
 
-        if (index < originalWords.length && currentWord === originalWord) {
-          correctWords.push(word); // 保留原始单词形式（可能包含句号）
-        } else {
-          incorrectWords.push(word);
-        }
-      });
+      // 提取错误单词 - 不包括额外单词
+      const incorrectWords = comparisonResult
+        .filter((item) => item.status === "incorrect")
+        .map((item) => item.userWord || "");
 
-      // 找出缺失的单词
-      const missingWords = originalWords.filter((word, index) => {
-        const isLast = index === originalWords.length - 1;
-        const originalWord = isLast ? removePeriod(word) : word;
+      // 提取额外单词 - 这些是用户输入多余的单词
+      const extraWords = comparisonResult
+        .filter((item) => item.status === "extra")
+        .map((item) => item.word);
 
-        return (
-          index >= inputWords.length ||
-          (index < inputWords.length &&
-            (isLast ? removePeriod(inputWords[index]) : inputWords[index]) !==
-              originalWord)
-        );
-      });
+      console.log("[analyzeText] 额外单词:", extraWords);
 
-      // 判断答案是否正确的逻辑
-      // 1. 完全匹配原文 或
-      // 2. 没有错误单词且没有缺失单词 (这是关键修改)
-      const exactMatch =
-        processedInput === original.trim() ||
-        (removePeriod(processedInput) === removePeriod(original.trim()) &&
-          processedInput.endsWith(".") &&
-          original.trim().endsWith("."));
+      const missingWords = comparisonResult
+        .filter((item) => item.status === "missing")
+        .map((item) => item.word);
 
+      // 构建详细的错误信息
+      const errorDetails = comparisonResult
+        .filter(
+          (item) =>
+            item.status === "missing" ||
+            item.status === "incorrect" ||
+            item.status === "extra"
+        )
+        .map((item) => {
+          if (item.status === "extra") {
+            // 多余单词，用户输入了但原文没有
+            return {
+              originalWord: "", // 原文中没有对应单词
+              userWord: item.word, // 用户输入的额外单词
+              errorType: ErrorType.EXTRA_WORD,
+            };
+          } else if (item.status === "missing") {
+            // 缺失单词，原文有但用户没输入
+            return {
+              originalWord: item.word, // 应该输入的单词
+              userWord: undefined, // 用户没输入
+              errorType: ErrorType.MISSING_WORD,
+            };
+          } else {
+            // 不正确的单词，对应关系已在compareTexts中建立
+            return {
+              originalWord: item.word, // 原文中的正确单词
+              userWord: item.userWord, // 用户输入的错误单词
+              errorType: item.errorType || ErrorType.OTHER,
+            };
+          }
+        });
+
+      // 确定答案是否正确
       const isCorrect =
-        exactMatch ||
-        (incorrectWords.length === 0 && missingWords.length === 0);
+        incorrectWords.length === 0 &&
+        missingWords.length === 0 &&
+        extraWords.length === 0;
+
+      console.debug("分析结果:", {
+        correctWords,
+        incorrectWords,
+        missingWords,
+        extraWords,
+        errorDetails,
+      });
 
       return {
         isCorrect,
-        originalText: original,
+        originalText: processedOriginal,
         userInput: processedInput,
         correctWords,
         incorrectWords,
         missingWords,
+        extraWords,
+        errorDetails,
       };
     },
     []
@@ -413,65 +482,199 @@ export default function DictationExercise() {
       // 记录错误数据到IndexedDB
       if (!analysisResult.isCorrect) {
         // 记录题目错误
-        recordQuestionError(currentItem.id, currentItem.text);
+        recordQuestionError(
+          currentItem.id,
+          currentItem.text,
+          analysisResult.userInput,
+          analysisResult
+        );
 
-        // 提取原始文本中的所有单词（非小写处理，保留原始形式）
-        const originalWordArray = currentItem.text.trim().split(/\s+/);
+        // 使用Set记录已经处理过的多余单词，避免重复记录
+        const processedExtraWords = new Set<string>();
 
-        // 将用户输入文本分割成单词数组（非小写处理，保留原始形式）
-        const userWordArray = userInput.trim().split(/\s+/);
+        // 处理错误详情并记录
+        if (
+          analysisResult.errorDetails &&
+          analysisResult.errorDetails.length > 0
+        ) {
+          console.log(
+            "[handleSubmit] 处理错误详情:",
+            JSON.stringify(analysisResult.errorDetails, null, 2)
+          );
 
-        // 创建映射存储已处理的单词位置，避免重复统计
-        const processedPositions = new Set<number>();
+          // 记录所有错误详情，首先清晰地区分多余单词
+          const extraWordErrors = analysisResult.errorDetails.filter(
+            (error) => error.errorType === ErrorType.EXTRA_WORD
+          );
 
-        // 实际要记录的错误单词
-        const wordsToRecord = new Set<string>();
+          const otherErrors = analysisResult.errorDetails.filter(
+            (error) => error.errorType !== ErrorType.EXTRA_WORD
+          );
 
-        // 首先标记用户输入的单词在原文中的状态
-        userWordArray.forEach((inputWord, inputIndex) => {
-          // 去除标点和转小写用于对比
-          const cleanInputWord = inputWord
-            .replace(/[.,!?;:"'()[\]{}]$/g, "")
-            .toLowerCase();
+          // 先处理多余单词
+          if (extraWordErrors.length > 0) {
+            console.log(
+              `[handleSubmit] 处理${extraWordErrors.length}个多余单词错误`
+            );
 
-          // 检查这个位置的单词是否正确
-          let isCorrectAtPosition = false;
-          if (inputIndex < originalWordArray.length) {
-            const originalWord = originalWordArray[inputIndex];
-            const cleanOriginalWord = originalWord
-              .replace(/[.,!?;:"'()[\]{}]$/g, "")
-              .toLowerCase();
+            extraWordErrors.forEach((errorDetail) => {
+              if (errorDetail.userWord) {
+                console.log(
+                  `[handleSubmit] 记录多余单词: "${errorDetail.userWord}"`
+                );
+                recordWordError(
+                  "", // 原始单词为空表示这是多余单词
+                  analysisResult.originalText,
+                  analysisResult.userInput,
+                  errorDetail.userWord
+                );
 
-            // 如果在该位置单词正确，标记该位置已处理
-            if (cleanInputWord === cleanOriginalWord) {
-              isCorrectAtPosition = true;
-              processedPositions.add(inputIndex);
-            }
+                // 将处理过的多余单词添加到集合中
+                processedExtraWords.add(
+                  errorDetail.userWord.toLowerCase().trim()
+                );
+              }
+            });
           }
 
-          // 如果该位置单词错误，记录原文对应位置的单词
-          if (!isCorrectAtPosition && inputIndex < originalWordArray.length) {
-            const originalWord = originalWordArray[inputIndex];
+          // 再处理其他错误
+          otherErrors.forEach((errorDetail) => {
+            recordWordError(
+              errorDetail.originalWord,
+              analysisResult.originalText,
+              analysisResult.userInput,
+              errorDetail.userWord
+            );
+          });
+        } else {
+          // 如果没有错误详情（兼容旧的分析结果），使用原来的错误记录方式
+          console.log("[handleSubmit] 使用传统方式记录错误");
 
-            if (!processedPositions.has(inputIndex)) {
-              wordsToRecord.add(originalWord);
-              processedPositions.add(inputIndex);
+          // 创建映射存储已处理的单词位置，避免重复统计
+          const processedPositions = new Set<number>();
+
+          // 首先标记用户输入的单词在原文中的状态
+          analysisResult.userInput
+            .trim()
+            .split(/\s+/)
+            .forEach((inputWord, inputIndex) => {
+              // 去除标点和转小写用于对比
+              const cleanInputWord = inputWord
+                .replace(/[.,!?;:"'()[\]{}]$/g, "")
+                .toLowerCase();
+
+              // 检查这个位置的单词是否正确
+              let isCorrectAtPosition = false;
+              if (
+                inputIndex <
+                analysisResult.originalText.trim().split(/\s+/).length
+              ) {
+                const originalWord = analysisResult.originalText
+                  .trim()
+                  .split(/\s+/)[inputIndex];
+                const cleanOriginalWord = originalWord
+                  .replace(/[.,!?;:"'()[\]{}]$/g, "")
+                  .toLowerCase();
+
+                // 如果在该位置单词正确，标记该位置已处理
+                if (cleanInputWord === cleanOriginalWord) {
+                  isCorrectAtPosition = true;
+                  processedPositions.add(inputIndex);
+                }
+              }
+
+              // 如果该位置单词错误，记录原文对应位置的单词
+              if (
+                !isCorrectAtPosition &&
+                inputIndex <
+                  analysisResult.originalText.trim().split(/\s+/).length
+              ) {
+                const originalWord = analysisResult.originalText
+                  .trim()
+                  .split(/\s+/)[inputIndex];
+
+                if (!processedPositions.has(inputIndex)) {
+                  recordWordError(
+                    originalWord,
+                    analysisResult.originalText,
+                    analysisResult.userInput,
+                    inputWord
+                  );
+                  processedPositions.add(inputIndex);
+                }
+              } else if (
+                !isCorrectAtPosition &&
+                inputIndex >=
+                  analysisResult.originalText.trim().split(/\s+/).length
+              ) {
+                // 这是多余单词
+                console.log(
+                  `[handleSubmit] 传统方法检测到多余单词: "${inputWord}"`
+                );
+
+                // 检查是否已经处理过此多余单词
+                const cleanWord = inputWord.toLowerCase().trim();
+                if (!processedExtraWords.has(cleanWord)) {
+                  recordWordError(
+                    "", // 原始单词为空表示这是多余单词
+                    analysisResult.originalText,
+                    analysisResult.userInput,
+                    inputWord
+                  );
+
+                  // 将处理过的多余单词添加到集合中
+                  processedExtraWords.add(cleanWord);
+                }
+              }
+            });
+
+          // 处理缺失的单词（即原文中存在但用户完全没有输入的单词）
+          for (
+            let i = 0;
+            i < analysisResult.originalText.trim().split(/\s+/).length;
+            i++
+          ) {
+            if (!processedPositions.has(i)) {
+              const originalWord = analysisResult.originalText
+                .trim()
+                .split(/\s+/)[i];
+              recordWordError(
+                originalWord,
+                analysisResult.originalText,
+                analysisResult.userInput
+              );
             }
-          }
-        });
-
-        // 处理缺失的单词（即原文中存在但用户完全没有输入的单词）
-        for (let i = 0; i < originalWordArray.length; i++) {
-          if (!processedPositions.has(i)) {
-            const originalWord = originalWordArray[i];
-            wordsToRecord.add(originalWord);
           }
         }
 
-        // 记录所有需要记录的单词错误
-        wordsToRecord.forEach((word) => {
-          recordWordError(word, currentItem.text);
-        });
+        // 特殊处理extraWords - 确保所有多余单词都被记录，但不重复记录
+        if (analysisResult.extraWords && analysisResult.extraWords.length > 0) {
+          console.log(
+            "[handleSubmit] 特殊处理extraWords:",
+            analysisResult.extraWords
+          );
+
+          analysisResult.extraWords.forEach((extraWord) => {
+            // 检查是否已经处理过此多余单词
+            const cleanWord = extraWord.toLowerCase().trim();
+            if (!processedExtraWords.has(cleanWord)) {
+              console.log(`[handleSubmit] 直接记录多余单词: "${extraWord}"`);
+              recordWordError(
+                "", // 原始单词为空表示这是多余单词
+                analysisResult.originalText,
+                analysisResult.userInput,
+                extraWord
+              );
+
+              // 将处理过的多余单词添加到集合中
+              processedExtraWords.add(cleanWord);
+            } else {
+              console.log(
+                `[handleSubmit] 跳过已处理的多余单词: "${extraWord}"`
+              );
+            }
+          });
+        }
       }
 
       // 如果答案正确，直接设置1秒后跳转
@@ -931,6 +1134,7 @@ export default function DictationExercise() {
                           <div style={{ marginTop: 8, fontSize: 12 }}>
                             <Tag color="success">正确单词</Tag>
                             <Tag color="error">错误单词</Tag>
+                            <Tag color="warning">漏词/多词</Tag>
                           </div>
                         </div>
                       }
@@ -943,23 +1147,46 @@ export default function DictationExercise() {
                             .trim()
                             .split(/\s+/)
                             .map((word, i) => {
-                              const correct = isWordCorrect(
-                                word,
-                                i,
-                                result.originalText
-                              );
+                              // 检查单词是否在正确单词列表中
+                              const isInCorrectList =
+                                result.correctWords.includes(word);
+
+                              // 检查单词是否是额外单词
+                              const isExtraWord =
+                                result.extraWords &&
+                                result.extraWords.includes(word);
+
+                              // 设置标签颜色
+                              let tagColor = "default";
+                              if (isInCorrectList) {
+                                tagColor = "success";
+                              } else if (isExtraWord) {
+                                tagColor = "warning"; // 多余词用黄色标记
+                              } else {
+                                tagColor = "error";
+                              }
+
                               return (
                                 <Tag
                                   key={i}
-                                  color={correct ? "success" : "error"}
+                                  color={tagColor}
                                   style={{
                                     padding: "4px 8px",
                                     fontSize: 14,
-                                    fontWeight: correct ? "normal" : "bold",
+                                    fontWeight: isInCorrectList
+                                      ? "normal"
+                                      : "bold",
                                     margin: "0 4px 8px 0",
                                   }}
                                 >
                                   {word}
+                                  {isExtraWord && (
+                                    <sup
+                                      style={{ marginLeft: 2, color: "orange" }}
+                                    >
+                                      +
+                                    </sup>
+                                  )}
                                 </Tag>
                               );
                             })}
@@ -996,39 +1223,159 @@ export default function DictationExercise() {
                           <Card size="small" styles={{ body: {} }}>
                             <Statistic
                               title="错误单词"
-                              value={result.incorrectWords.length}
+                              value={
+                                result.incorrectWords.length +
+                                result.missingWords.length +
+                                (result.extraWords
+                                  ? result.extraWords.length
+                                  : 0)
+                              }
                               valueStyle={{ color: "#cf1322" }}
                               prefix={<CloseCircleOutlined />}
                             />
                           </Card>
                         </Col>
                       </Row>
-
-                      {result.missingWords.length > 0 && (
-                        <div style={{ marginTop: 16 }}>
-                          <Card
-                            size="small"
-                            title={`缺失单词: ${result.missingWords.length}`}
-                            styles={{ body: {} }}
-                          >
-                            <Space wrap>
-                              {result.missingWords.map((word, i) => (
-                                <Tag
-                                  key={i}
-                                  color="warning"
-                                  style={{
-                                    padding: "4px 8px",
-                                    margin: "0 4px 4px 0",
-                                  }}
-                                >
-                                  {word}
-                                </Tag>
-                              ))}
-                            </Space>
-                          </Card>
-                        </div>
-                      )}
                     </Card>
+
+                    {/* 错误分析区域 - 改进版 */}
+                    {result.errorDetails && result.errorDetails.length > 0 && (
+                      <div style={{ marginTop: 16 }}>
+                        <Card
+                          size="small"
+                          title={
+                            <Space>
+                              <BarChartOutlined /> 错误类型分析
+                            </Space>
+                          }
+                          styles={{ body: {} }}
+                        >
+                          <Space direction="vertical" style={{ width: "100%" }}>
+                            {/* 统一处理所有类型的错误 */}
+                            {result.errorDetails
+                              .map((error, index) => ({
+                                ...error,
+                                index, // 保存原始索引以便于识别
+                              }))
+                              // 对错误按类型分组显示
+                              .sort((a, b) => {
+                                // 首先按错误类型排序
+                                if (a.errorType !== b.errorType) {
+                                  return a.errorType.localeCompare(b.errorType);
+                                }
+                                // 然后按原始索引排序
+                                return a.index - b.index;
+                              })
+                              .map((error) => {
+                                // 获取用户输入的错误单词（如果有）
+                                let errorWord = error.userWord || "";
+                                const errorTypeName =
+                                  ErrorTypeNames[error.errorType];
+                                const errorTypeColor =
+                                  ErrorTypeColors[error.errorType];
+
+                                // 区分不同类型的错误显示
+                                let displayErrorWord;
+
+                                if (
+                                  error.errorType === ErrorType.MISSING_WORD
+                                ) {
+                                  // 漏词显示为 [漏写]
+                                  displayErrorWord = (
+                                    <span
+                                      style={{
+                                        color: "#999",
+                                        fontStyle: "italic",
+                                      }}
+                                    >
+                                      [漏写]
+                                    </span>
+                                  );
+                                } else if (
+                                  error.errorType === ErrorType.EXTRA_WORD
+                                ) {
+                                  // 多余单词不再特殊显示，使用与其他错误相同的格式
+                                  displayErrorWord = (
+                                    <Text
+                                      code
+                                      type="warning"
+                                      style={{ fontSize: "16px" }}
+                                    >
+                                      {errorWord || ""}
+                                    </Text>
+                                  );
+                                } else {
+                                  // 其他错误类型
+                                  displayErrorWord = (
+                                    <Text
+                                      code
+                                      type="danger"
+                                      style={{ fontSize: "16px" }}
+                                    >
+                                      {errorWord || "未输入"}
+                                    </Text>
+                                  );
+                                }
+
+                                return (
+                                  <div
+                                    key={`${error.originalWord || "extra"}-${
+                                      error.index
+                                    }`}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      marginBottom: 8,
+                                      padding: "8px",
+                                      borderRadius: "4px",
+                                      backgroundColor: `${errorTypeColor}10`,
+                                      borderLeft: `4px solid ${errorTypeColor}`,
+                                    }}
+                                  >
+                                    <Tag
+                                      color={errorTypeColor}
+                                      style={{
+                                        minWidth: "80px",
+                                        textAlign: "center",
+                                        fontWeight: "bold",
+                                      }}
+                                    >
+                                      {errorTypeName}
+                                    </Tag>
+                                    <Space align="center" size="middle">
+                                      <Text strong>
+                                        {error.originalWord || ""}
+                                      </Text>
+                                      {error.originalWord &&
+                                        error.errorType !==
+                                          ErrorType.MISSING_WORD && (
+                                          <Text type="secondary">
+                                            <RightOutlined />
+                                          </Text>
+                                        )}
+                                      {displayErrorWord}
+
+                                      {/* 错误类型说明 */}
+                                      <Tooltip
+                                        title={getErrorTypeDescription(
+                                          error.errorType,
+                                          error.originalWord,
+                                          errorWord || ""
+                                        )}
+                                        placement="right"
+                                      >
+                                        <InfoCircleOutlined
+                                          style={{ color: errorTypeColor }}
+                                        />
+                                      </Tooltip>
+                                    </Space>
+                                  </div>
+                                );
+                              })}
+                          </Space>
+                        </Card>
+                      </div>
+                    )}
                   </Space>
                 )}
               </div>
