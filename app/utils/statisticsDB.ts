@@ -890,8 +890,13 @@ export async function getAllQuestionErrors(): Promise<any[]> {
 
       request.onsuccess = () => {
         const results = request.result;
-        // 按错误次数排序（降序）
-        results.sort((a, b) => b.count - a.count);
+        // 按最近错误时间排序（降序）而不是按错误次数
+        results.sort((a, b) => {
+          return (
+            new Date(b.lastErrorTime).getTime() -
+            new Date(a.lastErrorTime).getTime()
+          );
+        });
         db.close();
         resolve(results);
       };

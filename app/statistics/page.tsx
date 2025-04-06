@@ -343,6 +343,8 @@ export default function StatisticsPage() {
       sorter: (a: ErrorRecord, b: ErrorRecord) =>
         new Date(a.lastErrorTime || 0).getTime() -
         new Date(b.lastErrorTime || 0).getTime(),
+      defaultSortOrder: "descend",
+      sortDirections: ["descend", "ascend", "descend"],
     },
     {
       title: "操作",
