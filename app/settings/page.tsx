@@ -14,6 +14,7 @@ import {
   Input,
   Upload,
   Alert,
+  App,
 } from "antd";
 import {
   UploadOutlined,
@@ -29,6 +30,7 @@ import {
   exportAllData,
   importAllData,
   downloadAsJson,
+  clearAllStatistics,
 } from "../utils/statisticsDB";
 
 const { Title, Text, Paragraph } = Typography;
@@ -72,7 +74,7 @@ export default function SettingsPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
-  const [messageApi, contextHolder] = message.useMessage();
+  const { message: messageApi, modal } = App.useApp();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form] = Form.useForm();
 
@@ -407,75 +409,93 @@ export default function SettingsPage() {
     }
   };
 
-  return (
-    <div style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto" }}>
-      {contextHolder}
-      <Card variant="borderless" className="shadow-md">
-        <div style={{ padding: "24px" }}>
-          <Title level={4} style={{ marginBottom: 24 }}>
-            <Space>
-              <SettingOutlined /> 系统设置
-            </Space>
-          </Title>
+  // 添加清空数据库功能
+  const handleClearData = () => {
+    // 使用App组件中的modal API
+    modal.confirm({
+      title: "确定要清空所有数据吗？",
+      content:
+        "此操作将清除所有错误统计记录和学习进度，不可恢复！建议先导出备份。",
+      okText: "确认清空",
+      okType: "danger",
+      cancelText: "取消",
+      async onOk() {
+        try {
+          await clearAllStatistics();
+          messageApi.success("数据已清空");
+        } catch (error) {
+          console.error("清空数据失败:", error);
+          messageApi.error("清空数据失败: " + (error as Error).message);
+        }
+      },
+    });
+  };
 
-          <Divider orientation="left">快捷键设置</Divider>
-          <Row style={{ marginBottom: 24 }}>
-            <Col span={24}>
-              <Paragraph>
-                您可以自定义听写练习中使用的快捷键，使其更符合您的使用习惯。
-              </Paragraph>
-              <Button
-                type="primary"
-                onClick={() => setShortcutsModalOpen(true)}
-                style={{ marginTop: 12 }}
-              >
-                配置快捷键
-              </Button>
-            </Col>
-          </Row>
-
-          <Divider orientation="left">数据管理</Divider>
-          <Row style={{ marginBottom: 24 }} gutter={[16, 16]}>
-            <Col xs={24} md={12}>
-              <Card title="数据导出" variant="borderless">
-                <Paragraph>
-                  导出您的所有学习记录和设置，包括错误统计、进度和快捷键配置等数据。
-                </Paragraph>
-                <Button
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  onClick={handleExportData}
-                  loading={exportLoading}
-                >
-                  导出数据
-                </Button>
-              </Card>
-            </Col>
-            <Col xs={24} md={12}>
-              <Card title="数据导入" variant="borderless">
-                <Paragraph>
-                  从之前导出的文件中恢复您的学习记录和设置，替换当前的数据。
-                </Paragraph>
-                <Button
-                  type="primary"
-                  icon={<UploadOutlined />}
-                  onClick={showImportModal}
-                >
-                  导入数据
-                </Button>
-              </Card>
-            </Col>
-          </Row>
-
-          <Divider orientation="left">其他设置</Divider>
-          <Paragraph
-            type="secondary"
-            style={{ textAlign: "center", padding: "20px 0" }}
-          >
-            更多设置选项将在后续版本中添加
-          </Paragraph>
-        </div>
+  // 定义设置内容组件
+  const SettingsContent = () => (
+    <div>
+      <Card style={{ marginBottom: 16 }}>
+        <Title level={4}>快捷键设置</Title>
+        <Paragraph>
+          <Text>自定义答题界面的快捷键，使操作更加方便。</Text>
+        </Paragraph>
+        <Button
+          type="primary"
+          icon={<SettingOutlined />}
+          onClick={() => setShortcutsModalOpen(true)}
+        >
+          配置快捷键
+        </Button>
       </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Title level={4}>数据备份与恢复</Title>
+        <Paragraph>
+          <Text>
+            导出您的学习数据进行备份，或从之前的备份中恢复数据。数据包括错误统计、学习进度和个人设置。
+          </Text>
+        </Paragraph>
+        <Space>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={handleExportData}
+            loading={exportLoading}
+          >
+            导出数据
+          </Button>
+          <Button
+            icon={<UploadOutlined />}
+            onClick={showImportModal}
+            loading={importLoading}
+          >
+            导入数据
+          </Button>
+        </Space>
+      </Card>
+
+      <Card>
+        <Title level={4} style={{ color: "#cf1322" }}>
+          危险操作
+        </Title>
+        <Paragraph>
+          <Text type="danger">
+            清空所有学习统计数据，包括错误记录和学习进度。此操作不可撤销！
+          </Text>
+        </Paragraph>
+        <Button danger onClick={handleClearData}>
+          清空数据
+        </Button>
+      </Card>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "24px", maxWidth: "800px", margin: "0 auto" }}>
+      <Typography.Title level={2}>设置</Typography.Title>
+      <Divider />
+
+      <SettingsContent />
 
       {/* 快捷键设置弹窗 */}
       <Modal

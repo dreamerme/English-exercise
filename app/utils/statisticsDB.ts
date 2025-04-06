@@ -1039,7 +1039,7 @@ export async function clearAllStatistics(): Promise<void> {
   try {
     const db = await openDB();
     const transaction = db.transaction(
-      ["questionErrors", "wordErrors"],
+      ["questionErrors", "wordErrors", "progress"],
       "readwrite"
     );
 
@@ -1050,6 +1050,10 @@ export async function clearAllStatistics(): Promise<void> {
     // 清除单词错误数据
     const wordStore = transaction.objectStore("wordErrors");
     wordStore.clear();
+
+    // 清除进度数据
+    const progressStore = transaction.objectStore("progress");
+    progressStore.clear();
 
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
