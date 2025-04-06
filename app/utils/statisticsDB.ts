@@ -59,6 +59,28 @@ export const ErrorTypeColors: Record<ErrorType, string> = {
   [ErrorType.OTHER]: "purple",
 };
 
+// 创建初始化的错误类型记录，所有类型的错误计数都为0
+export function createInitialErrorTypes(
+  activeType?: ErrorType
+): Record<ErrorType, number> {
+  const errorTypes: Record<ErrorType, number> = {
+    [ErrorType.SPELLING]: 0,
+    [ErrorType.MISSING_WORD]: 0,
+    [ErrorType.EXTRA_WORD]: 0,
+    [ErrorType.WORD_ORDER]: 0,
+    [ErrorType.TENSE]: 0,
+    [ErrorType.PART_OF_SPEECH]: 0,
+    [ErrorType.SYNONYM]: 0,
+    [ErrorType.APPROXIMATE]: 0,
+    [ErrorType.OTHER]: 0,
+  };
+  // 如果指定了活动错误类型，设置其计数为1
+  if (activeType) {
+    errorTypes[activeType] = 1;
+  }
+  return errorTypes;
+}
+
 // 默认快捷键配置
 export const DEFAULT_SHORTCUTS = {
   submit: { key: "Enter", shiftKey: false, description: "提交答案" },
@@ -685,9 +707,7 @@ export async function recordWordError(
 
         // 更新错误类型统计
         if (!data.errorTypes) {
-          data.errorTypes = {
-            [errorType]: 1,
-          };
+          data.errorTypes = createInitialErrorTypes(errorType);
         } else {
           data.errorTypes[errorType] = (data.errorTypes[errorType] || 0) + 1;
         }
@@ -721,9 +741,7 @@ export async function recordWordError(
           count: 1,
           lastErrorTime: now,
           firstErrorTime: now,
-          errorTypes: {
-            [errorType]: 1,
-          },
+          errorTypes: createInitialErrorTypes(errorType),
           wrongInputs: actualErrorWord
             ? [
                 {
@@ -793,9 +811,8 @@ async function recordExtraWord(
 
         // 更新错误类型统计
         if (!data.errorTypes) {
-          data.errorTypes = {
-            [ErrorType.EXTRA_WORD]: 1,
-          };
+          // 创建一个包含所有 ErrorType 的记录
+          data.errorTypes = createInitialErrorTypes(ErrorType.EXTRA_WORD);
         } else {
           data.errorTypes[ErrorType.EXTRA_WORD] =
             (data.errorTypes[ErrorType.EXTRA_WORD] || 0) + 1;
@@ -828,9 +845,7 @@ async function recordExtraWord(
           count: 1,
           lastErrorTime: now,
           firstErrorTime: now,
-          errorTypes: {
-            [ErrorType.EXTRA_WORD]: 1,
-          },
+          errorTypes: createInitialErrorTypes(ErrorType.EXTRA_WORD),
           wrongInputs: [
             {
               input: extraWord,
@@ -918,7 +933,7 @@ export async function getAllWordErrors(): Promise<any[]> {
           // 检查错误类型的总和是否与count一致
           let errorTypeSum = 0;
           for (const type in fixedRecord.errorTypes) {
-            errorTypeSum += fixedRecord.errorTypes[type];
+            errorTypeSum += fixedRecord.errorTypes[type as ErrorType];
           }
 
           // 如果错误类型总和与count不一致，修复错误类型分布
@@ -957,20 +972,30 @@ export async function getAllWordErrors(): Promise<any[]> {
             if (fixedRecord.wrongInputs && fixedRecord.wrongInputs.length > 0) {
               // 检查是否有重复记录（相同时间或几乎相同时间的记录）
               const uniqueTimes = new Set();
-              const uniqueInputs = fixedRecord.wrongInputs.filter((entry) => {
-                // 仅保留时间戳到分钟的精度
-                const timeToMinute = entry.time.substring(0, 16);
-                if (uniqueTimes.has(timeToMinute)) {
-                  return false; // 这是重复记录
+              const uniqueInputs = fixedRecord.wrongInputs!.filter(
+                (entry: {
+                  input: string;
+                  time: string;
+                  errorType: ErrorType;
+                }) => {
+                  // 仅保留时间戳到分钟的精度
+                  const timeToMinute = entry.time.substring(0, 16);
+                  if (uniqueTimes.has(timeToMinute)) {
+                    return false; // 这是重复记录
+                  }
+                  uniqueTimes.add(timeToMinute);
+                  return true;
                 }
-                uniqueTimes.add(timeToMinute);
-                return true;
-              });
+              );
 
               // 如果有重复，修复历史记录和计数
-              if (uniqueInputs.length < fixedRecord.wrongInputs.length) {
+              if (uniqueInputs.length < fixedRecord.wrongInputs!.length) {
                 console.log(
-                  `[getAllWordErrors] 检测到重复记录: "${fixedRecord.word}" 历史记录从${fixedRecord.wrongInputs.length}减少到${uniqueInputs.length}`
+                  `[getAllWordErrors] 检测到重复记录: "${
+                    fixedRecord.word
+                  }" 历史记录从${fixedRecord.wrongInputs!.length}减少到${
+                    uniqueInputs.length
+                  }`
                 );
                 fixedRecord.wrongInputs = uniqueInputs;
                 fixedRecord.count = uniqueInputs.length;
@@ -2029,7 +2054,9 @@ export async function cleanupDuplicateRecords(): Promise<{
 
       // 确保有错误类型字段
       if (!record.errorTypes) {
-        record.errorTypes = { [ErrorType.OTHER]: record.count };
+        const initialTypes = createInitialErrorTypes();
+        initialTypes[ErrorType.OTHER] = record.count; // 把所有已有错误归为OTHER类型
+        record.errorTypes = initialTypes;
         needsUpdate = true;
         fixReason += "添加缺失的错误类型; ";
       }
@@ -2037,7 +2064,7 @@ export async function cleanupDuplicateRecords(): Promise<{
       // 检查错误类型总和
       let errorTypeSum = 0;
       for (const type in record.errorTypes) {
-        errorTypeSum += record.errorTypes[type];
+        errorTypeSum += record.errorTypes[type as ErrorType];
       }
 
       // 修复不一致的错误类型统计
@@ -2061,18 +2088,20 @@ export async function cleanupDuplicateRecords(): Promise<{
       if (record.wrongInputs && record.wrongInputs.length > 0) {
         // 找出重复的输入记录 (基于几乎相同时间的输入)
         const uniqueTimes = new Set<string>();
-        const uniqueInputs = record.wrongInputs.filter((entry) => {
-          // 仅保留时间戳到分钟级别的精度
-          const timeToMinute = entry.time.substring(0, 16);
+        const uniqueInputs = record.wrongInputs.filter(
+          (entry: { input: string; time: string; errorType: ErrorType }) => {
+            // 仅保留时间戳到分钟级别的精度
+            const timeToMinute = entry.time.substring(0, 16);
 
-          // 检查这个时间是否已经存在
-          if (uniqueTimes.has(timeToMinute)) {
-            return false; // 这是重复项
+            // 检查这个时间是否已经存在
+            if (uniqueTimes.has(timeToMinute)) {
+              return false; // 这是重复项
+            }
+
+            uniqueTimes.add(timeToMinute);
+            return true;
           }
-
-          uniqueTimes.add(timeToMinute);
-          return true;
-        });
+        );
 
         // 如果发现重复，更新记录
         if (uniqueInputs.length < record.wrongInputs.length) {
@@ -2091,7 +2120,7 @@ export async function cleanupDuplicateRecords(): Promise<{
           // 重新计算总计数
           let newCount = 0;
           for (const type in record.errorTypes) {
-            newCount += record.errorTypes[type];
+            newCount += record.errorTypes[type as ErrorType];
           }
           record.count = newCount;
 
